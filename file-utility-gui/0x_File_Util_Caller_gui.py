@@ -74,11 +74,13 @@ import csv
 import importlib.util
 import warnings
 import pandas as pd
+import subprocess
 # from filters_ui_3x import collect_filter_rules
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from stub_5x_ui_config_gui import get_stub_column_config
 from stub_5x_ui_gui import add_stub_column
+
 
 
 # Optional: Enable Dask if available
@@ -539,7 +541,8 @@ class FileUtilityApp:
             "9": "split_file_by_condition",
             "10": "split_by_composite_condition",  # ✅ INSERT HERE
             "11": "concatenate_files",
-            "12": "merge_by_key"
+            "12": "merge_by_key",
+            "13": "file_compare"
         }
 
         for key in sorted( self.function_options.keys(), key=lambda x: int( x ) ):
@@ -587,12 +590,18 @@ class FileUtilityApp:
         self.shared_data["flags"]["strip_quotes"] = self.strip_quotes_var.get()
 
         # Basic validation
-        if not self.shared_data["input_file"]:
+        selected_queue = self.shared_data.get( "function_queue", [] )
+        if "file_compare" not in selected_queue and not self.shared_data["input_file"]:
             messagebox.showerror( "Missing Input", "Please select an input file before continuing." )
             return
 
-        if not self.shared_data["function_queue"]:
-            messagebox.showerror( "No Functions Selected", "Please select at least one function." )
+        # Skip input file check if file_compare is the only selected function
+        selected_queue = self.shared_data.get( "function_queue", [] )
+        if (
+                "file_compare" not in selected_queue
+                and not self.shared_data["input_file"]
+        ):
+            messagebox.showerror( "Missing Input", "Please select an input file before continuing." )
             return
 
         # Debug preview (can be replaced with actual routing later)
@@ -605,13 +614,21 @@ class FileUtilityApp:
         print( "----------------" )
 
         messagebox.showinfo( "Ready", "Configuration complete. Ready to launch processing." )
+        # 🚫 Skip all input file logic for file_compare
+        if "file_compare" in self.shared_data["function_queue"]:
+            subprocess.Popen( ["python", "Two_File_Compare_gui.py"] )
+            return
 
         # Detect delimiter
         self.shared_data["delimiter"] = file_loader.detect_delimiter( self.shared_data["input_file"] )
         print( f"[INFO] Detected delimiter: '{self.shared_data['delimiter']}'" )
 
         # Set output file path
-        base, ext = os.path.splitext( self.shared_data["input_file"] )
+        if "file_compare" not in self.shared_data["function_queue"]:
+            base, ext = os.path.splitext( self.shared_data["input_file"] )
+        else:
+            base, ext = "output", ".csv"
+
         output_path = f"{base}._RESULTS{ext}"
         self.shared_data["output_file"] = output_path
         print( f"[INFO] Output file will be: {output_path}" )
@@ -669,6 +686,15 @@ class FileUtilityApp:
                 "You selected a mix of incompatible functions (stream + dask). Please separate them."
             )
             return
+
+        if selected_function == "file_compare":
+            try:
+                subprocess.Popen( ["python", "Two_File_Compare_gui.py"] )
+                return
+            except Exception as e:
+                messagebox.showerror( "Error", f"Failed to launch compare tool:\n{e}" )
+                return
+
         elif uses_stream:
             self.shared_data["mode"] = "stream"
             print( "[INFO] Detected: Standard Mode (stream-based, low memory)." )

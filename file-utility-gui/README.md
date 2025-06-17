@@ -30,6 +30,8 @@ This is a modular, GUI-based system for advanced CSV/TXT file processing. The to
 | 10     | `split_by_composite_condition`         | Split file based on multiple field matches |
 | 11     | `concatenate_files`                    | Combine two or more files |
 | 12     | `merge_by_key`                         | Retain/exclude records based on key file |
+| 13     | `compare_two_files_gui`                | Standalone GUI to compare two delimited files |
+
 
 ---
 
@@ -48,9 +50,20 @@ file-utility-gui/
 ├── 9x_Splitter.py, splitter_9x_gui.py, splitter_9x_composite_gui.py
 ├── 10x_Merger.py, merger_gui_10x.py
 ├── 11x_Utils.py
+|── Two_File_Compare_gui.py
 ├── requirements.txt
 └── File_Utility_GUI_ReadMe.docx
 ```
+
+## 🆕 Standalone Utility: File Compare (GUI)
+
+This standalone script allows comparison of two delimited files, showing unmatched records with detailed character-level differences.
+
+- Supports files with or without headers
+- Allows specific columns to be excluded from comparison
+- GUI-based selection of files and fields
+- Generates `COMPARE_RESULTS.txt` in the same folder
+
 
 ---
 
@@ -99,3 +112,12 @@ pip install -r requirements.txt
 ## 📜 License
 
 This project is licensed under the MIT License.
+
+---
+
+### 🔄 Recent Updates
+
+**2025-06-17**  
+- Added new standalone compare utility: `Two_File_Compare_gui.py`
+- Updated GUI documentation and menu table with function #13
+

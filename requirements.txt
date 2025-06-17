@@ -1,8 +1,0 @@
-pandas>=1.5.0
-dask[complete]>=2023.0.0
-
-# Uncomment if you plan to use Dask distributed
-# distributed>=2023.0.0
-
-# Uncomment if you want to convert this app to a .exe later
-# pyinstaller
