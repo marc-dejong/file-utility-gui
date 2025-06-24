@@ -687,13 +687,13 @@ class FileUtilityApp:
             )
             return
 
-        if selected_function == "file_compare":
-            try:
-                subprocess.Popen( ["python", "Two_File_Compare_gui.py"] )
-                return
-            except Exception as e:
-                messagebox.showerror( "Error", f"Failed to launch compare tool:\n{e}" )
-                return
+        # if selected_function == "file_compare":
+        #     try:
+        #         subprocess.Popen( ["python", "Two_File_Compare_gui.py"] )
+        #         return
+        #     except Exception as e:
+        #         messagebox.showerror( "Error", f"Failed to launch compare tool:\n{e}" )
+        #         return
 
         elif uses_stream:
             self.shared_data["mode"] = "stream"
