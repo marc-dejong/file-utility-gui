@@ -73,14 +73,20 @@ import traceback
 import csv
 import importlib.util
 import warnings
+from pickle import FALSE
+
 import pandas as pd
 import subprocess
 # from filters_ui_3x import collect_filter_rules
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+
+from dask.config import config
+
 from stub_5x_ui_config_gui import get_stub_column_config
 from stub_5x_ui_gui import add_stub_column
-
+import chardet  # Required if not already imported
+from utils_11x_gui import safe_open
 
 
 # Optional: Enable Dask if available
@@ -126,7 +132,8 @@ def create_shared_data():
             "debug": False,                # SET TO TRUE FOR DASK TUNING THEN TRY RE-RUNNING
             "dry_run": False,
             "case_sensitive": False,
-            "strip_quotes": False
+            "strip_quotes": False,
+            "flexible_decoding": False
         },
         "has_header": False,
         "header": [],
@@ -243,7 +250,8 @@ class FileUtilityApp:
                 "debug": False,
                 "dry_run": False,
                 "case_sensitive": False,
-                "strip_quotes": False
+                "strip_quotes": False,
+                "flexible_decoding": False
             },
             "has_header": False,
             "header": [],
@@ -356,17 +364,27 @@ class FileUtilityApp:
 
         input_headers = self.shared_data.get("header_fields", [])
 
-        # Fallback if no headers available
         if not input_headers:
-            input_file = self.shared_data.get("input_file")
-            delimiter = self.shared_data.get("delimiter", ",")
+            input_file = self.shared_data.get( "input_file" )
+            delimiter = self.shared_data.get( "delimiter", "," )
             try:
-                with open(input_file, "r", encoding="utf-8") as f:
-                    reader = csv.reader(f, delimiter=delimiter)
-                    first_row = next(reader, [])
-                    input_headers = [f"Field {i+1}" for i in range(len(first_row))]
+                f, enc_used, fallback = safe_open(
+                    input_file,
+                    mode="r",
+                    newline="",
+                    flexible=config["flags"].get( "flexible_decoding", False )
+                )
+
+                if fallback:
+                    print( f"[INFO] Opened input file using fallback encoding: {enc_used}" )
+                else:
+                    print( f"[INFO] Opened input file using preferred encoding: {enc_used}" )
+                with f:
+                    reader = csv.reader( f, delimiter=delimiter )
+                    first_row = next( reader, [] )
+                    input_headers = [f"Field {i + 1}" for i in range( len( first_row ) )]
             except Exception as e:
-                messagebox.showerror("Header Load Error", f"Could not determine header fields:\n{e}")
+                messagebox.showerror( "Header Load Error", f"Could not determine header fields:\n{e}" )
                 popup.destroy()
                 return
 
@@ -522,8 +540,16 @@ class FileUtilityApp:
             variable=self.strip_quotes_var
         ).grid( row=5, column=0, sticky="w" )
 
+        # Flexible decoding checkbox
+        self.flexible_decoding_var = tk.BooleanVar( value=False )
+        ttk.Checkbutton(
+            frame,
+            text="Enable flexible encoding fallback (try CP1252, Latin-1 if UTF-8 fails)",
+            variable=self.flexible_decoding_var
+        ).grid( row=6, column=0, sticky="w" )
+
         # Function selection label
-        ttk.Label( frame, text="Step 2: Select Functions to Apply" ).grid( row=6, column=0, pady=(15, 0), sticky="w" )
+        ttk.Label( frame, text="Step 2: Select Functions to Apply" ).grid( row=7, column=0, pady=(15, 0), sticky="w" )
 
         self.function_listbox = tk.Listbox( frame, selectmode=tk.MULTIPLE, height=10, exportselection=False )
         self.function_listbox.grid( row=7, column=0, sticky="w", pady=5 )
@@ -588,6 +614,7 @@ class FileUtilityApp:
         self.shared_data["has_header"] = self.has_header_var.get()
         self.shared_data["flags"]["case_sensitive"] = self.case_sensitive_var.get()
         self.shared_data["flags"]["strip_quotes"] = self.strip_quotes_var.get()
+        self.shared_data["flags"]["flexible_decoding"] = self.flexible_decoding_var.get()
 
         # Basic validation
         selected_queue = self.shared_data.get( "function_queue", [] )
@@ -927,25 +954,48 @@ class FileUtilityApp:
                                 return
 
                             output_path = self.shared_data["output_file"]
-                            with open( self.shared_data["input_file"], "r", encoding="utf-8" ) as infile, \
-                                    open( output_path, "w", encoding="utf-8" ) as outfile:
+                            input_file = self.shared_data["input_file"]
+                            delimiter = self.shared_data["delimiter"]
 
+                            try:
+                                infile, enc_in, _ = safe_open(
+                                    input_file,
+                                    mode="r",
+                                    newline="",
+                                    flexible=config["flags"].get( "flexible_decoding", True )
+                                )
+
+                                outfile, enc_out, _ = safe_open(
+                                    output_path,
+                                    mode="w",
+                                    newline="",
+                                    flexible=config["flags"].get( "flexible_decoding", True )
+                                )
+
+                                print( f"[INFO] Opened input file using encoding: {enc_in}" )
+                                print( f"[INFO] Opened output file using encoding: {enc_out}" )
+                            except Exception as e:
+                                print( f"[ERROR] File open failed: {e}" )
+                                messagebox.showerror( "File Open Error", f"Could not open file:\n{e}" )
+                                return
+
+                            with infile, outfile:
                                 first_line = infile.readline()
                                 if self.shared_data["has_header"]:
-                                    header = first_line.strip().split( self.shared_data["delimiter"] )
+                                    header = first_line.strip().split( delimiter )
                                     header.append( config["new_column"] )
-                                    outfile.write( self.shared_data["delimiter"].join( header ) + "\n" )
+                                    outfile.write( delimiter.join( header ) + "\n" )
                                 else:
                                     outfile.write( first_line )
 
                                 for line in infile:
-                                    row = line.strip().split( self.shared_data["delimiter"] )
+                                    row = line.strip().split( delimiter )
                                     new_row, _ = add_stub_column(
                                         row=row,
                                         header_fields=self.shared_data["header"],
                                         config=config
                                     )
-                                    outfile.write( self.shared_data["delimiter"].join( new_row ) + "\n" )
+                                    outfile.write( delimiter.join( new_row ) + "\n" )
 
                             print( "\n=== ADD FIXED STUB SUMMARY ===" )
                             print( f"[INFO] Stub column added   : {config['new_column']}" )

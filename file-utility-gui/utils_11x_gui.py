@@ -14,6 +14,46 @@ DESCRIPTION:
 from datetime import datetime
 import sys
 import os
+import chardet
+
+import os
+import chardet
+
+def safe_open(filepath, mode="r", newline=None, flexible=True):
+
+    """
+    Attempts to open a file with a series of fallback encodings.
+    Returns: (file object, encoding used, was_replaced)
+    """
+    encodings_to_try = ["utf-8", "cp1252", "latin1"]
+    was_replaced = False
+    print( f"[DEBUG] flexible={flexible}" )
+
+    for enc in encodings_to_try:
+        try:
+            f = open( filepath, mode, encoding=enc, newline=newline )
+            if 'r' in mode:
+                try:
+                    # Force full decode to catch mid-file encoding issues
+                    for _ in f:
+                        pass
+                    f.seek( 0 )
+                except UnicodeDecodeError:
+                    f.close()
+                    continue  # Try next encoding
+            return f, enc, was_replaced
+        except Exception:
+            continue  # Try next encoding
+
+    # Final fallback using utf-8 with replacement only if flexible is enabled
+    if flexible:
+        try:
+            f = open( filepath, mode, encoding="utf-8", errors="replace", newline=newline )
+            was_replaced = True
+            print( f"[WARN] Used utf-8 with replacement on: {filepath}" )
+            return f, "utf-8 (errors=replace)", was_replaced
+        except Exception:
+            pass  # Let the final failure block catch it
 
 
 def prompt_for_date_filter_config(valid_columns: list[str]) -> dict:

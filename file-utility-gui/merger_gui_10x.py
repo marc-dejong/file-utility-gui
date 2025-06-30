@@ -30,8 +30,15 @@ AUTHOR:
 """
 import csv
 import traceback
-
 from tkinter import messagebox
+import chardet
+from utils_11x_gui import (
+    prompt_for_file_path,
+    prompt_for_delimiter,
+    prompt_yes_no,
+    display_column_choices,
+    safe_open,
+)
 
 def normalize_field(value: str) -> str:
     return value.strip().strip('"').lstrip('0') or '0'
@@ -43,8 +50,6 @@ def display_column_choices(headers):
 
 
 def prompt_for_merge_config():
-    from utils_11x_gui import prompt_for_file_path, prompt_for_delimiter, prompt_yes_no, display_column_choices
-
     config = {}
 
     # MAIN input file
@@ -156,7 +161,9 @@ def prompt_for_key_fields_to_append(key_headers):
 
 def build_key_set(key_file_path, delimiter, has_header, mapping):
     key_set = set()
-    with open(key_file_path, encoding='utf-8') as f:
+    f, f_enc, _ = safe_open(key_file_path, mode="r")
+    print(f"[INFO] Opened Key File in build_key_set using encoding: {f_enc}")
+    with f:
         lines = f.readlines()
         if has_header:
             lines = lines[1:]
@@ -165,6 +172,7 @@ def build_key_set(key_file_path, delimiter, has_header, mapping):
             key = tuple(normalize_field(parts[int(k)]) for k, _ in mapping)
             key_set.add(key)
     return key_set
+
 
 
 def filter_and_merge_main_file(config, mapping, append_fields, shared_data):
@@ -176,15 +184,21 @@ def filter_and_merge_main_file(config, mapping, append_fields, shared_data):
 
     key_tuples = build_key_set(config["key_file"], config["key_delimiter"], config["key_has_header"], mapping)
 
-    with open(config["main_file"], encoding='utf-8') as fin, \
-         open(output_path, 'w', encoding='utf-8') as fout:
+    fin, fin_enc, _ = safe_open( config["main_file"], mode="r" )
+    fout, fout_enc, _ = safe_open( output_path, mode="w" )
 
+    print(f"[INFO] Opened Main File using encoding: {fin_enc}")
+    print(f"[INFO] Opened Output File using encoding: {fout_enc}")
+
+    with fin, fout:
         if config["main_has_header"]:
             main_header = fin.readline().rstrip('\n').split(config["main_delimiter"])
             if write_header:
                 header_line = config["main_delimiter"].join(main_header)
                 if config["merge_mode"] == 2:
-                    with open(config["key_file"], encoding='utf-8') as fkey:
+                    fkey, fkey_enc, _ = safe_open(config["key_file"], mode="r")
+                    print(f"[INFO] Opened Key File using encoding: {fkey_enc}")
+                    with fkey:
                         key_header = fkey.readline().rstrip('\n').split(config["key_delimiter"])
                         append_headers = [key_header[i] for i in append_fields]
                         header_line += config["main_delimiter"] + config["main_delimiter"].join(append_headers)
@@ -200,7 +214,9 @@ def filter_and_merge_main_file(config, mapping, append_fields, shared_data):
                 if config["merge_mode"] == 1:
                     fout.write(line)
                 elif config["merge_mode"] == 2:
-                    with open(config["key_file"], encoding='utf-8') as fkey:
+                    fkey, fkey_enc, _ = safe_open(config["key_file"], mode="r")
+                    print(f"[INFO] Re-opened Key File for match search using encoding: {fkey_enc}")
+                    with fkey:
                         if config["key_has_header"]:
                             next(fkey)
                         for kline in fkey:
@@ -211,6 +227,7 @@ def filter_and_merge_main_file(config, mapping, append_fields, shared_data):
                                 combined = main_parts + append_vals
                                 fout.write(config["main_delimiter"].join(combined) + '\n')
                                 break
+
 
 def run_merge_10x_process(shared_data=None, mode=None):
 
@@ -237,42 +254,88 @@ def run_merge_10x_process(shared_data=None, mode=None):
 
         # Now run basic merge
         try:
-            with open(input_file_1, "r", newline="", encoding="utf-8") as f1, \
-                 open(input_file_2, "r", newline="", encoding="utf-8") as f2, \
-                 open(output_file, "w", newline="", encoding="utf-8") as fout:
+            f1, enc1, _ = safe_open( input_file_1, mode="r", newline="" )
+            f2, enc2, _ = safe_open( input_file_2, mode="r", newline="" )
+            fout, enc_out, _ = safe_open( output_file, mode="w", newline="" )
 
-                reader1 = csv.reader(f1, delimiter=delimiter)
-                reader2 = csv.reader(f2, delimiter=delimiter)
-                writer = csv.writer(fout, delimiter=delimiter)
+            print( f"[INFO] Opened File 1 using encoding: {enc1}" )
+            print( f"[INFO] Opened File 2 using encoding: {enc2}" )
+            print( f"[INFO] Opened Output File using encoding: {enc_out}" )
+
+            with f1, f2, fout:
+                try:
+                    rows1 = list( csv.reader( f1, delimiter=delimiter ) )
+                except UnicodeDecodeError as e:
+                    print( f"[FATAL] Failed to read File 1 due to encoding issue: {e}" )
+                    messagebox.showerror( "Read Error", f"Failed to read File 1 due to encoding error:\n{e}" )
+                    return
+                except Exception as e:
+                    print( f"[FATAL] Unexpected error reading File 1: {e}" )
+                    messagebox.showerror( "Read Error", f"Unexpected error while reading File 1:\n{e}" )
+                    return
+
+                try:
+                    rows2 = list( csv.reader( f2, delimiter=delimiter ) )
+                except UnicodeDecodeError as e:
+                    print( f"[FATAL] Failed to read File 2 due to encoding issue: {e}" )
+                    messagebox.showerror( "Read Error", f"Failed to read File 2 due to encoding error:\n{e}" )
+                    return
+                except Exception as e:
+                    print( f"[FATAL] Unexpected error reading File 2: {e}" )
+                    messagebox.showerror( "Read Error", f"Unexpected error while reading File 2:\n{e}" )
+                    return
+
+                if not rows1:
+                    raise ValueError( "First input file appears to be empty." )
+                if not rows2:
+                    raise ValueError( "Second input file appears to be empty." )
+
+                writer = csv.writer( fout, delimiter=delimiter )
 
                 if has_header:
-                    header1 = next( reader1, [] )
-                    next( reader2, None )  # Skip second file’s header
+                    header1 = rows1[0]
+                    header2 = rows2[0]
+
+                    if header1 != header2:
+                        print( "[WARN] Header mismatch detected between the two files." )
+                        print( "Header from file 1:", header1 )
+                        print( "Header from file 2:", header2 )
+
                     writer.writerow( header1 )
+                    rows1 = rows1[1:]  # remove header from data
+                    rows2 = rows2[1:]
 
                 count1 = 0
                 count2 = 0
 
-                for row in reader1:
-                    writer.writerow( row )
-                    count1 += 1
+                # Write data
+                for row in rows1:
+                    if any( cell.strip() for cell in row ):
+                        writer.writerow( row )
+                        count1 += 1
 
-                for row in reader2:
-                    writer.writerow( row )
-                    count2 += 1
+                for row in rows2:
+                    if any( cell.strip() for cell in row ):
+                        writer.writerow( row )
+                        count2 += 1
 
                 print( f"[INFO] Rows written from File 1: {count1:,}" )
                 print( f"[INFO] Rows written from File 2: {count2:,}" )
                 print( f"[INFO] Total records written (excluding header): {count1 + count2:,}" )
+                summary = (
+                    f"Rows written from File 1: {count1:,}\n"
+                    f"Rows written from File 2: {count2:,}\n"
+                    f"Total records written (excluding header): {count1 + count2:,}"
+                )
+                messagebox.showinfo( "Concatenation Complete", summary )
 
-                response = messagebox.askyesno( "Next Step", "Do you want to process another file?" )
-                if not response:
-                    shared_data["root"].destroy()
+            response = messagebox.askyesno( "Next Step", "Do you want to process another file?" )
+            if not response:
+                shared_data["root"].destroy()
 
-        except Exception as e:
-            print(f"[ERROR] Merge failed: {e}")
-            messagebox.showerror("Merge Error", f"Merge failed:\n{e}")
-        return
+        except Exception as io_err:
+            print( f"[ERROR] Merge failed during read: {io_err}" )
+            messagebox.showerror( "Merge Error", f"Merge failed during read:\n{io_err}" )
 
     elif mode == "key":
         print( "[MODE] Running Key-Based Merge from GUI" )
@@ -299,7 +362,10 @@ def run_merge_10x_process(shared_data=None, mode=None):
         try:
             # Step 1: Build key set from key file
             key_set = set()
-            with open( key_file, "r", encoding="utf-8" ) as kf:
+            kf, kf_enc, _ = safe_open( key_file, mode="r" )
+            print( f"[INFO] Opened Key File using encoding: {kf_enc}" )
+
+            with kf:
                 reader = csv.reader( kf, delimiter=delimiter )
                 if has_header:
                     next( reader, None )
@@ -311,9 +377,12 @@ def run_merge_10x_process(shared_data=None, mode=None):
 
             # Step 2: Open input file and write matches to output
             match_count = 0
-            with open( input_file, "r", encoding="utf-8" ) as inf, \
-                    open( output_file, "w", newline="", encoding="utf-8" ) as outf:
+            inf, inf_enc, _ = safe_open( input_file, mode="r" )
+            print( f"[INFO] Opened Input File using encoding: {inf_enc}" )
+            outf, outf_enc, _ = safe_open( output_file, mode="w", newline="" )
+            print( f"[INFO] Opened Output File using encoding: {outf_enc}" )
 
+            with inf, outf:
                 reader = csv.reader( inf, delimiter=delimiter )
                 writer = csv.writer( outf, delimiter=delimiter )
 
@@ -336,8 +405,6 @@ def run_merge_10x_process(shared_data=None, mode=None):
             response = messagebox.askyesno( "Next Step", "Do you want to process another file?" )
             if not response:
                 shared_data["root"].destroy()
-
-
 
         except Exception as e:
             print( f"[ERROR] Merge by key failed: {e}" )
