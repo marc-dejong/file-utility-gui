@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import simpledialog, messagebox
 import pandas as pd
 import dask.dataframe as dd
+import csv
 
 def split_file_by_condition(shared_data):
     delimiter = shared_data["delimiter"]
@@ -36,30 +37,61 @@ def split_file_by_condition(shared_data):
     df = dd.read_csv(
         input_file,
         assume_missing=True,
+        encoding="utf-8-sig",
         dtype=str,
         sep=delimiter,
         blocksize="64MB"
     )
 
     # Normalize field values (trim + lower)
-    df[field] = df[field].astype(str).str.strip().str.lower()
+    df[field] = df[field].astype( str ).str.strip().str.lower()
 
     # Perform split
-    match_df = df[df[field].isin(values)]
-    nonmatch_df = df[~df[field].isin(values)]
+    match_df = df[df[field].isin( values )]
+    nonmatch_df = df[~df[field].isin( values )]
 
     # Prepare output paths
-    base, ext = os.path.splitext(input_file)
+    base, ext = os.path.splitext( input_file )
     match_file = f"{base}._MATCH{ext}"
     nonmatch_file = f"{base}._NOMATCH{ext}"
 
-    match_df.to_csv(match_file, index=False, single_file=True, sep=delimiter)
-    nonmatch_df.to_csv(nonmatch_file, index=False, single_file=True, sep=delimiter)
+    # Determine quoting behavior based on GUI checkbox
+    strip_quotes = shared_data["flags"].get( "strip_quotes", False )
+
+    if strip_quotes:
+        quoting = csv.QUOTE_NONE
+        quotechar = ''
+        escapechar = '\\'
+    else:
+        quoting = csv.QUOTE_NONNUMERIC
+        quotechar = '"'
+        escapechar = None
+
+    # Write match records
+    match_df.to_csv(
+        match_file,
+        index=False,
+        single_file=True,
+        sep=delimiter,
+        quoting=quoting,
+        quotechar=quotechar,
+        escapechar=escapechar
+    )
+
+    # Write non-match records
+    nonmatch_df.to_csv(
+        nonmatch_file,
+        index=False,
+        single_file=True,
+        sep=delimiter,
+        quoting=quoting,
+        quotechar=quotechar,
+        escapechar=escapechar
+    )
 
     print(f"[9x_Splitter] Split complete:")
     print(f"  Match → {match_file}")
     print(f"  Non-match → {nonmatch_file}")
-
 
 def gui_select_field(title, header_list):
     win = tk.Toplevel()

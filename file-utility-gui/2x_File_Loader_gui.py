@@ -43,9 +43,21 @@ def validate_path(file_path, mode='r'):
         return os.path.isdir(os.path.dirname(file_path)) or os.path.dirname(file_path) == ''
     return False
 
+
+# Helper to open files with encoding fallback
+def safe_open(filepath, mode="r", encoding_list=["utf-8", "cp1252"], **kwargs):
+    for enc in encoding_list:
+        try:
+            return open(filepath, mode, encoding=enc, **kwargs), enc
+        except UnicodeDecodeError:
+            continue
+    raise UnicodeDecodeError(f"Could not decode {filepath} with supported encodings.")
+
+
 def detect_delimiter(file_path):
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        f, enc = safe_open(file_path, mode='r')
+        with f:
             sample = f.readline()
             comma_count = sample.count(',')
             semicolon_count = sample.count(';')
@@ -65,7 +77,9 @@ def read_file(file_path, shared_data, delimiter=','):
 
     print(f"[INFO] Reading file: {file_path} with delimiter '{delimiter}'")
 
-    with open(file_path, mode='r', newline='', encoding='utf-8') as f:
+    f, enc = safe_open(file_path, mode='r', newline='')
+    print(f"[INFO] Opened input file using encoding: {enc}")
+    with f:
         reader = csv.reader( f, delimiter=delimiter, quotechar='"' )
         chunk_size = shared_data.get( "chunk_size", 1 )
         buffer = []

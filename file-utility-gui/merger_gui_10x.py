@@ -290,7 +290,24 @@ def run_merge_10x_process(shared_data=None, mode=None):
                 if not rows2:
                     raise ValueError( "Second input file appears to be empty." )
 
-                writer = csv.writer( fout, delimiter=delimiter )
+                strip_quotes = shared_data.get( "flags", {} ).get( "strip_quotes", False )
+
+                if strip_quotes:
+                    quoting = csv.QUOTE_NONE
+                    quotechar = ''
+                    escapechar = '\\'
+                else:
+                    quoting = csv.QUOTE_NONNUMERIC
+                    quotechar = '"'
+                    escapechar = None
+
+                writer = csv.writer(
+                    fout,
+                    delimiter=delimiter,
+                    quoting=quoting,
+                    quotechar=quotechar,
+                    escapechar=escapechar
+                )
 
                 if has_header:
                     header1 = rows1[0]
@@ -384,7 +401,24 @@ def run_merge_10x_process(shared_data=None, mode=None):
 
             with inf, outf:
                 reader = csv.reader( inf, delimiter=delimiter )
-                writer = csv.writer( outf, delimiter=delimiter )
+                strip_quotes = shared_data.get( "flags", {} ).get( "strip_quotes", False )
+
+                if strip_quotes:
+                    quoting = csv.QUOTE_NONE
+                    quotechar = ''
+                    escapechar = '\\'
+                else:
+                    quoting = csv.QUOTE_NONNUMERIC
+                    quotechar = '"'
+                    escapechar = None
+
+                writer = csv.writer(
+                    outf,
+                    delimiter=delimiter,
+                    quoting=quoting,
+                    quotechar=quotechar,
+                    escapechar=escapechar
+                )
 
                 if has_header:
                     header = next( reader, None )

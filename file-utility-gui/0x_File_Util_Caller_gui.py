@@ -1324,8 +1324,6 @@ class FileUtilityApp:
 
                         self.shared_data["second_file"] = second_file
 
-                        run_merge_10x_process( self.shared_data, mode="basic" )
-
                     else:
                         print( f"[WARN] Function '{function_name}' not yet implemented in GUI stream mode." )
             except Exception as e:
@@ -1400,7 +1398,6 @@ class FileUtilityApp:
 
                     try:
                         input_count = len( df )
-                        df = dedupe_records( df, dedupe_fields=dedupe_fields, mode=mode )
                         output_count = len( df )
 
                         if mode == "dedupe":
@@ -1429,7 +1426,6 @@ class FileUtilityApp:
                         self.shared_data["errors"].append( "dedupe_records failed" )
                         return
 
-
             # Handle sort_records
             if "sort_records" in self.shared_data["function_queue"]:
                 from sorter_7x import sort_records
@@ -1442,12 +1438,24 @@ class FileUtilityApp:
                     messagebox.showinfo( "No Sort Fields", "No sort fields selected. Skipping sort step." )
                 else:
                     print( f"[INFO] Sorting by: {sort_fields}" )
+                    selected_fields = sort_fields
+
+                    # ✅ Extract needed values from shared_data
+                    input_file = self.shared_data["input_file"]
+                    output_file = self.shared_data["output_file"]
+                    detected_delimiter = self.shared_data["delimiter"]
+                    quote_preserve = not self.shared_data["flags"].get( "strip_quotes", False )
+                    flexible_flag = self.shared_data["flags"].get( "flexible_decoding", True )
+
                     sort_records(
-                        df=df,
-                        output_file=self.shared_data["output_file"],
-                        sort_fields=sort_fields,
-                        delimiter=self.shared_data["delimiter"]
+                        input_file,
+                        output_file,
+                        selected_fields,
+                        delimiter=detected_delimiter,
+                        quote_preserve=quote_preserve,
+                        fallback=flexible_flag
                     )
+
                     messagebox.showinfo(
                         "Sort Complete",
                         f"Sorted output written to:\n{self.shared_data['output_file']}"
@@ -1506,12 +1514,26 @@ class FileUtilityApp:
                     self.shared_data["errors"].append( "split_by_composite_condition failed." )
                     return
 
-        # Final output (if no sort triggered early exit)
+            # Final output (if no sort triggered early exit)
+            strip_quotes = self.shared_data["flags"].get( "strip_quotes", False )
+
+            if strip_quotes:
+                quoting = csv.QUOTE_NONE
+                quotechar = ""
+                escapechar = "\\"
+            else:
+                quoting = csv.QUOTE_NONNUMERIC
+                quotechar = '"'
+                escapechar = None
+
             df.to_csv(
                 self.shared_data["output_file"],
                 single_file=True,
                 index=False,
-                sep=self.shared_data["delimiter"]
+                sep=self.shared_data["delimiter"],
+                quoting=quoting,
+                quotechar=quotechar,
+                escapechar=escapechar
             )
 
             messagebox.showinfo(

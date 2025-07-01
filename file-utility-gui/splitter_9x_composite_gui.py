@@ -6,6 +6,8 @@ import tkinter as tk
 from tkinter import simpledialog, messagebox
 import pandas as pd
 import dask.dataframe as dd
+import csv
+
 
 def split_by_composite_condition(shared_data):
     delimiter = shared_data["delimiter"]
@@ -30,6 +32,7 @@ def split_by_composite_condition(shared_data):
     # Load data
     df = dd.read_csv(
         input_file,
+        encoding="utf-8-sig",
         assume_missing=True,
         dtype=str,
         sep=delimiter,
@@ -45,6 +48,7 @@ def split_by_composite_condition(shared_data):
     # Load full data for nonmatch
     full_df = dd.read_csv(
         input_file,
+        encoding="utf-8-sig",
         assume_missing=True,
         dtype=str,
         sep=delimiter,
@@ -61,8 +65,39 @@ def split_by_composite_condition(shared_data):
     match_file = f"{base}._MATCH_{first_field}{ext}"
     nonmatch_file = f"{base}._NOMATCH_{first_field}{ext}"
 
-    match_df.to_csv(match_file, index=False, single_file=True, sep=delimiter)
-    nonmatch_df.to_csv(nonmatch_file, index=False, single_file=True, sep=delimiter)
+    # Determine quoting behavior based on GUI checkbox
+    strip_quotes = shared_data["flags"].get( "strip_quotes", False )
+
+    if strip_quotes:
+        quoting = csv.QUOTE_NONE
+        quotechar = ''
+        escapechar = '\\'
+    else:
+        quoting = csv.QUOTE_NONNUMERIC
+        quotechar = '"'
+        escapechar = None
+
+    # Write match records
+    match_df.to_csv(
+        match_file,
+        index=False,
+        single_file=True,
+        sep=delimiter,
+        quoting=quoting,
+        quotechar=quotechar,
+        escapechar=escapechar
+    )
+
+    # Write non-match records
+    nonmatch_df.to_csv(
+        nonmatch_file,
+        index=False,
+        single_file=True,
+        sep=delimiter,
+        quoting=quoting,
+        quotechar=quotechar,
+        escapechar=escapechar
+    )
 
     print("[9x_Splitter_Composite] Split complete:")
     print(f"  Match → {match_file}")
