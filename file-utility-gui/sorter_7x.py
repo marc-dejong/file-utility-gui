@@ -3,6 +3,7 @@
 
 import dask.dataframe as dd
 import csv
+from io import StringIO
 
 def sort_records(input_file, output_file, sort_fields, delimiter=",", quote_preserve=True, fallback=True):
     """
@@ -34,6 +35,7 @@ def sort_records(input_file, output_file, sort_fields, delimiter=",", quote_pres
             header_line = f.readline()
             header_fields = header_line.strip().split( delimiter )
             data_lines = f.readlines()
+            reject_lines = []
 
         # Map sort_fields to column indices
         sort_indices = []
@@ -48,18 +50,45 @@ def sort_records(input_file, output_file, sort_fields, delimiter=",", quote_pres
         print( "===============================\n" )
 
         def extract_sort_keys(line):
-            fields = line.strip().split( delimiter )
-            return tuple( fields[i] for i in sort_indices )
+            try:
+                reader = csv.reader(StringIO(line), delimiter=delimiter, quotechar='"')
+                fields = next(reader)
+            except Exception as e:
+                print(f"[WARN] Failed to parse line for sorting: {line.strip()[:80]}... Error: {e}")
+                reject_lines.append(line)
+                return tuple()  # Still include in sort at top (optional)
 
-        # Perform the sort based on extracted keys
-        sorted_lines = sorted( data_lines, key=extract_sort_keys )
+            keys = []
+            for i in sort_indices:
+                val = fields[i].strip().strip('"')
+                try:
+                    keys.append(int(val))  # Try integer
+                except ValueError:
+                    try:
+                        keys.append(float(val))  # Try float
+                    except ValueError:
+                        keys.append(val)  # Fall back to cleaned string
+            return tuple(keys)
 
-        with open( output_file, mode="w", encoding="utf-8", newline="" ) as f:
-            f.write( header_line )
-            f.writelines( sorted_lines )
+        # Perform the sort
+        sorted_lines = sorted(data_lines, key=extract_sort_keys)
 
-        print( f"[7x_Sorter] Output written to: {output_file}" )
+        # Write main output
+        with open(output_file, mode="w", encoding="utf-8", newline="") as f:
+            f.write(header_line)
+            f.writelines(sorted_lines)
+
+        print(f"[7x_Sorter] Output written to: {output_file}")
+
+        # Optionally write rejected lines
+        if reject_lines:
+            reject_path = output_file.replace("._RESULTS", "._REJECTS")
+            with open(reject_path, mode="w", encoding="utf-8", newline="") as rej:
+                rej.writelines(reject_lines)
+            print(f"[WARN] {len(reject_lines)} malformed line(s) written to: {reject_path}")
+
         return
+
 
     # ---- MODE 2: STRIP QUOTES USING DASK ----
     print( "[7x_Sorter] - quote_preserve received: False" )
