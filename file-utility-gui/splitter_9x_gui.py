@@ -7,10 +7,20 @@ from tkinter import simpledialog, messagebox
 import pandas as pd
 import dask.dataframe as dd
 import csv
+from utils_11x_gui import safe_open
+
 
 def split_file_by_condition(shared_data):
     delimiter = shared_data["delimiter"]
     input_file = shared_data["input_file"]
+
+    # Setup logger (from shared_data or fallback)
+    logger = shared_data.get("logger")
+    if logger is None:
+        import logging
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger("splitter_fallback")
+
 
     # Prompt user for split field
     field = gui_select_field("Select field to split on", shared_data["header"])
@@ -34,14 +44,30 @@ def split_file_by_condition(shared_data):
         return
 
     # Load data
-    df = dd.read_csv(
-        input_file,
-        assume_missing=True,
-        encoding="utf-8-sig",
-        dtype=str,
-        sep=delimiter,
-        blocksize="64MB"
-    )
+    df = shared_data.get("normalized_ddf")
+    if df is not None:
+        logger.info("[9x_Splitter] Using normalized Dask dataframe.")
+    else:
+        logger.info("[9x_Splitter] No normalized dataframe found — loading from file.")
+        # Load data
+        df = shared_data.get("normalized_ddf")
+        if df is not None:
+            logger.info("[9x_Splitter] Using normalized Dask dataframe.")
+        else:
+            logger.info("[9x_Splitter] No normalized dataframe found — loading from file.")
+            _, detected_enc, _ = safe_open(
+                input_file,
+                mode="r",
+                flexible=shared_data["flags"].get("flexible_decoding", True)
+            )
+            df = dd.read_csv(
+                input_file,
+                assume_missing=True,
+                encoding=detected_enc,
+                dtype=str,
+                sep=delimiter,
+                blocksize="64MB"
+            )
 
     # Normalize field values (trim + lower)
     df[field] = df[field].astype( str ).str.strip().str.lower()
@@ -92,6 +118,9 @@ def split_file_by_condition(shared_data):
     print(f"[9x_Splitter] Split complete:")
     print(f"  Match → {match_file}")
     print(f"  Non-match → {nonmatch_file}")
+    logger.info(f"[9x_Splitter] Split complete:")
+    logger.info(f"  Match → {match_file}")
+    logger.info(f"  Non-match → {nonmatch_file}")
 
 def gui_select_field(title, header_list):
     win = tk.Toplevel()

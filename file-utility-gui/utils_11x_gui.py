@@ -13,47 +13,54 @@ DESCRIPTION:
 """
 from datetime import datetime
 import sys
-import os
 import chardet
-
+from tkinter import filedialog, messagebox, simpledialog
 import os
-import chardet
+import traceback
+import logging
 
-def safe_open(filepath, mode="r", newline=None, flexible=True):
 
+def safe_open(filepath, mode="r", newline=None, flexible=True, **kwargs):
+    kwargs.pop("flexible", None)  # ← removes flexible before passing to open()
     """
     Attempts to open a file with a series of fallback encodings.
     Returns: (file object, encoding used, was_replaced)
     """
+    # Remove any accidental 'flexible' in kwargs passed through **kwargs
+    kwargs.pop("flexible", None)
+
     encodings_to_try = ["utf-8", "cp1252", "latin1"]
     was_replaced = False
-    print( f"[DEBUG] flexible={flexible}" )
+    print(f"[DEBUG] flexible={flexible}")
 
     for enc in encodings_to_try:
         try:
-            f = open( filepath, mode, encoding=enc, newline=newline )
+            f = open(filepath, mode, encoding=enc, newline=newline, **kwargs)
             if 'r' in mode:
                 try:
-                    # Force full decode to catch mid-file encoding issues
                     for _ in f:
                         pass
-                    f.seek( 0 )
+                    f.seek(0)
                 except UnicodeDecodeError:
                     f.close()
-                    continue  # Try next encoding
+                    continue
             return f, enc, was_replaced
+
         except Exception:
-            continue  # Try next encoding
+            continue
 
     # Final fallback using utf-8 with replacement only if flexible is enabled
     if flexible:
         try:
-            f = open( filepath, mode, encoding="utf-8", errors="replace", newline=newline )
+            f = open(filepath, mode, encoding="utf-8", errors="replace", newline=newline, **kwargs)
             was_replaced = True
-            print( f"[WARN] Used utf-8 with replacement on: {filepath}" )
+            print(f"[WARN] Used utf-8 with replacement on: {filepath}")
             return f, "utf-8 (errors=replace)", was_replaced
         except Exception:
-            pass  # Let the final failure block catch it
+            pass
+
+    raise UnicodeDecodeError(f"Could not decode {filepath} with supported encodings.")
+
 
 
 def prompt_for_date_filter_config(valid_columns: list[str]) -> dict:
@@ -72,11 +79,16 @@ def prompt_for_date_filter_config(valid_columns: list[str]) -> dict:
 
     # Step 1: Show fields and ask for a column by number or name
     while True:
-        print("\nAvailable columns for date filtering:")
-        for idx, col in enumerate(valid_columns):
-            print(f"  {idx}: {col}")
+        column_list = "\n".join([f"{idx}: {col}" for idx, col in enumerate(valid_columns)])
+        messagebox.showinfo("Available Columns", column_list)
 
-        column_input = input("Enter the column number or name to evaluate as a date: ").strip()
+        column_input = simpledialog.askstring(
+            "Select Date Column",
+            "Enter the column number or name to evaluate as a date:"
+        )
+        if not column_input:
+            messagebox.showerror("Input Error", "A column selection is required.")
+            return None
 
         if column_input.isdigit():
             index = int(column_input)
@@ -99,23 +111,25 @@ def prompt_for_date_filter_config(valid_columns: list[str]) -> dict:
         "5": "cancel"
     }
 
-    while True:
-        print("\nSelect the type of date filter to apply:")
-        print("  1. Exact date match")
-        print("  2. Date is on or after a specified date")
-        print("  3. Date is on or before a specified date")
-        print("  4. Date falls within a range (inclusive)")
-        print("  5. Cancel")
-        choice = input("> ").strip()
-        filter_type = filter_type_options.get(choice)
-        if filter_type:
-            if filter_type == "cancel":
-                print("[CANCELLED] Date filter configuration aborted by user.")
-                sys.exit(0)
-            break
-        print("[ERROR] Invalid selection. Please enter 1-5.\n")
+    choice = simpledialog.askstring(
+        "Date Filter Type",
+        "Select the type of date filter to apply:\n"
+        "1. Exact date match\n"
+        "2. Date is on or after a specified date\n"
+        "3. Date is on or before a specified date\n"
+        "4. Date falls within a range (inclusive)\n"
+        "5. Cancel"
+    )
 
-    # Step 4: Select source format
+    filter_type = filter_type_options.get(choice)
+    if not filter_type:
+        messagebox.showerror("Invalid Selection", "Please enter a number between 1 and 5.")
+        return None
+
+    if filter_type == "cancel":
+        messagebox.showinfo("Cancelled", "Date filter configuration aborted.")
+        return None
+
     format_options = {
         "1": ("%Y-%m-%d", "YYYY-MM-DD"),
         "2": ("%Y-%m-%d %H:%M:%S.%f", "YYYY-MM-DD HH:MM:SS.SSS"),
@@ -128,25 +142,43 @@ def prompt_for_date_filter_config(valid_columns: list[str]) -> dict:
         "9": ("cancel", "Cancel")
     }
 
-    print( "\nWhat format are the dates in this column?" )
-    for key, (_, label) in format_options.items():
-        print( f"  {key}. {label}" )
+    format_result = format_options.get(choice)
+    if not format_result:
+        messagebox.showerror("Invalid Selection", "Please enter a valid option number (1–9).")
+        return None
 
-    while True:
-        format_choice = input( "> " ).strip()
-        fmt_code, fmt_label = format_options.get( format_choice, (None, None) )
-        if fmt_code:
-            if fmt_code == "cancel":
-                print( "[CANCELLED] Date filter configuration aborted by user." )
-                sys.exit( 0 )
-            break
-        print( "[ERROR] Invalid selection. Please enter 1-9.\n" )
+    if choice == "9":  # cancel
+        messagebox.showinfo("Cancelled", "Date filter configuration aborted.")
+        return None
+
+    date_format, format_label = format_result
+
+    format_text = "\n".join([f"{key}. {label}" for key, (_, label) in format_options.items()])
+    format_choice = simpledialog.askstring(
+        "Date Format",
+        f"Select date format:\n\n{format_text}"
+    )
+
+    fmt_code, fmt_label = format_options.get(format_choice, (None, None))
+    if not fmt_code:
+        messagebox.showerror("Invalid Selection", "Please enter a valid option (1–9).")
+        return None
+
+    if fmt_code == "cancel":
+        messagebox.showinfo("Cancelled", "Date filter configuration aborted.")
+        return None
 
     source_format = fmt_label
 
     # Optional custom format string
     if fmt_code == "custom":
-        fmt_code = input( "\nEnter the Python datetime format string (e.g., %m-%d-%Y): " ).strip()
+        fmt_code = simpledialog.askstring(
+            "Custom Format",
+            "Enter the Python datetime format string (e.g., %m-%d-%Y):"
+        )
+        if not fmt_code:
+            messagebox.showerror("Input Error", "Custom format is required.")
+            return None
         source_format = fmt_code
 
     # Step 3: Date input (raw values only for now)
@@ -154,11 +186,26 @@ def prompt_for_date_filter_config(valid_columns: list[str]) -> dict:
     raw_input_end = None
 
     if filter_type in ("exact", "after", "before"):
-        raw_input_start = input( f"\nEnter the date (format: {fmt_label}): " ).strip()
+        raw_input_start = simpledialog.askstring(
+            "Date Entry",
+            f"Enter the date (format: {fmt_label}):"
+        )
+        if not raw_input_start:
+            messagebox.showerror("Input Error", "Date value is required.")
+            return None
 
     elif filter_type == "range":
-        raw_input_start = input( f"\nEnter the start date (format: {fmt_label}): " ).strip()  # <-- CHANGED
-        raw_input_end = input( f"Enter the end date (format: {fmt_label}): " ).strip()
+        raw_input_start = simpledialog.askstring(
+            "Start Date",
+            f"Enter the start date (format: {fmt_label}):"
+        )
+        raw_input_end = simpledialog.askstring(
+            "End Date",
+            f"Enter the end date (format: {fmt_label}):"
+        )
+        if not raw_input_start or not raw_input_end:
+            messagebox.showerror("Input Error", "Both start and end dates are required.")
+            return None
 
     return {
         "column_name": column_name,
@@ -210,13 +257,15 @@ def validate_and_parse_date_config(config: dict) -> dict:
                     return datetime.strptime(raw_value, fmt_code)
 
             except Exception as e:
-                print(f"\n[ERROR] Failed to parse date '{raw_value}' using format '{fmt_code}'.")
-                print("Error details:", str(e))
-                retry = input("Would you like to re-enter the date? (y/n): ").strip().lower()
-                if retry == "y":
-                    raw_value = input(f"Re-enter the date (format: {fmt_code}): ").strip()
+                traceback_str = traceback.format_exc()
+                logging.error("Date parsing failed:\n%s", traceback_str)
+                messagebox.showerror("Date Parsing Error", f"Failed to parse date(s):\n{e}")
+
+                retry = messagebox.askyesno("Retry?", "Would you like to re-enter the date filter values?")
+                if retry:
+                    return prompt_for_date_filter_config()
                 else:
-                    print("\n[FAILURE] Date parsing aborted by user.")
+                    messagebox.showinfo("Cancelled", "Date filter configuration cancelled.")
                     return None
 
     # Parse start date
@@ -232,34 +281,32 @@ def validate_and_parse_date_config(config: dict) -> dict:
 
     return config
 
-def prompt_for_file_path(prompt_msg: str) -> str:
-    while True:
-        path = input(f"{prompt_msg}\n> ").strip()
-        if os.path.isfile(path):
-            return path
-        print(f"[ERROR] File not found: {path}")
 
-def prompt_for_delimiter(prompt_msg: str = "Enter the delimiter used in the file (e.g., , ; |):") -> str:
-    while True:
-        delimiter = input(f"{prompt_msg}\n> ").strip()
-        if delimiter:
-            return delimiter
-        print("[ERROR] Delimiter cannot be empty.")
+def prompt_for_file_path(prompt_msg: str) -> str:
+    path = filedialog.askopenfilename(title=prompt_msg)
+    if not path or not os.path.isfile(path):
+        messagebox.showerror("File Not Found", f"The selected file was not found:\n{path}")
+        return prompt_for_file_path(prompt_msg)  # Retry until valid
+    return path
+
+
+def prompt_for_delimiter() -> str:
+    delim = simpledialog.askstring(
+        "Delimiter",
+        "Enter the delimiter character used in your file:\n(e.g., ',' for CSV, '\\t' for tab)"
+    )
+    if not delim:
+        messagebox.showerror("Invalid Input", "A delimiter is required.")
+        return prompt_for_delimiter()
+    return delim
+
 
 def prompt_yes_no(prompt_msg: str) -> bool:
-    while True:
-        response = input(f"{prompt_msg} (y/n): ").strip().lower()
-        if response in {"y", "yes"}:
-            return True
-        elif response in {"n", "no"}:
-            return False
-        else:
-            print("[ERROR] Please enter 'y' or 'n'.")
+    return messagebox.askyesno("Confirm", prompt_msg)
 
-def display_column_choices(headers: list[str]):
-    print("\nAvailable Columns:")
-    for idx, name in enumerate(headers):
-        print(f"[{idx}] {name}")
+def display_column_choices(header_list: list):
+    column_text = "\n".join([f"{i}: {col}" for i, col in enumerate(header_list)])
+    messagebox.showinfo("Available Columns", column_text)
 
 
 

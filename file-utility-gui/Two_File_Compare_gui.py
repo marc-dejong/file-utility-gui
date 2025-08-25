@@ -201,7 +201,7 @@ def launch_compare_gui():
         )
 
         out_path = os.path.join( os.path.dirname( file1_path ), "COMPARE_RESULTS.txt" )
-        with open( out_path, "w" ) as out_file:
+        with open( out_path, "w", newline="" ) as out_file:
             out_file.write( f"FILE1: {os.path.basename( file1_path )}\n" )
             out_file.write( f"FILE2: {os.path.basename( file2_path )}\n" )
             if unmatched_count == 0:

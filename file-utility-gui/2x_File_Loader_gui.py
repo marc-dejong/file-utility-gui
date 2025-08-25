@@ -35,6 +35,7 @@ Change Log:
 
 import os
 import csv
+from utils_11x_gui import safe_open  # Ensure this import is present
 
 def validate_path(file_path, mode='r'):
     if mode == 'r':
@@ -44,27 +45,20 @@ def validate_path(file_path, mode='r'):
     return False
 
 
-# Helper to open files with encoding fallback
-def safe_open(filepath, mode="r", encoding_list=["utf-8", "cp1252"], **kwargs):
-    for enc in encoding_list:
-        try:
-            return open(filepath, mode, encoding=enc, **kwargs), enc
-        except UnicodeDecodeError:
-            continue
-    raise UnicodeDecodeError(f"Could not decode {filepath} with supported encodings.")
-
-
-def detect_delimiter(file_path):
+def detect_delimiter(file_path, shared_data):
+    """
+    Attempts to auto-detect the delimiter of a CSV file using encoding fallback.
+    Returns ',' if detection fails.
+    """
     try:
-        f, enc = safe_open(file_path, mode='r')
-        with f:
-            sample = f.readline()
-            comma_count = sample.count(',')
-            semicolon_count = sample.count(';')
-            if comma_count == semicolon_count == 0:
-                print("[WARN] Unable to detect delimiter from header. Defaulting to comma.")
-                return ','
-            return ',' if comma_count > semicolon_count else ';'
+        flex = shared_data.get("flags", {}).get("flexible_decoding", False)
+        f, enc, _ = safe_open(file_path, mode='r', newline='', flexible=flex)
+        sample = f.read(2048)
+        f.close()
+
+        sniffer = csv.Sniffer()
+        dialect = sniffer.sniff(sample)
+        return dialect.delimiter
     except Exception as e:
         print(f"[ERROR] Could not auto-detect delimiter: {e}. Defaulting to comma.")
         return ','
@@ -77,7 +71,9 @@ def read_file(file_path, shared_data, delimiter=','):
 
     print(f"[INFO] Reading file: {file_path} with delimiter '{delimiter}'")
 
-    f, enc = safe_open(file_path, mode='r', newline='')
+    flex = shared_data.get("flags", {}).get("flexible_decoding", False)
+    f, enc, _ = safe_open(file_path, mode='r', newline='', flexible=flex)
+
     print(f"[INFO] Opened input file using encoding: {enc}")
     with f:
         reader = csv.reader( f, delimiter=delimiter, quotechar='"' )

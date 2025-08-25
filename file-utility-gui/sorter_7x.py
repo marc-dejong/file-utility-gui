@@ -4,36 +4,51 @@
 import dask.dataframe as dd
 import csv
 from io import StringIO
+from utils_11x_gui import safe_open
 
-def sort_records(input_file, output_file, sort_fields, delimiter=",", quote_preserve=True, fallback=True):
+
+def sort_records(df_or_path, output_file, sort_fields, delimiter=",", quote_preserve=True, fallback=True,
+                 logger=None):
     """
-        Sorts a Dask DataFrame and writes the sorted result to a CSV file.
+            Sorts a Dask DataFrame and writes the sorted result to a CSV file.
 
-        Parameters:
-            input_file (str): Path to input file
-            output_file (str): Path to output file
-            sort_fields (list): List of column names to sort by
-            delimiter (str): Field delimiter to use in output file
-            quote_preserve (bool): If True, retain double quotes in output
-            fallback (bool): If True, enable flexible encoding fallback
-        """
+            Parameters:
+                input_file (str): Path to input file
+                output_file (str): Path to output file
+                sort_fields (list): List of column names to sort by
+                delimiter (str): Field delimiter to use in output file
+                quote_preserve (bool): If True, retain double quotes in output
+                fallback (bool): If True, enable flexible encoding fallback
+            """
+    import logging
+    if logger is None:
+        import logging
+        logging.basicConfig(level=logging.DEBUG)  # ⬅️ Raise default level
+        logger = logging.getLogger("sorter_fallback")
+        logger.setLevel(logging.DEBUG)  # ⬅️ Explicitly allow debug logs
+    else:
+        logger.setLevel(logging.DEBUG)  # ⬅️ Force even if passed in
 
-    from utils_11x_gui import safe_open
+    reject_lines = []  # <-- Needed in both quote_preserve and non-quote_preserve paths
 
-    print( f"[7x_Sorter] after import 22 - quote_preserve received: {quote_preserve}" )
-
-    # Determine encoding
-    _, f_enc, _ = safe_open( input_file, mode="r", flexible=fallback )
-    print( f"[7x_Sorter] Detected encoding: {f_enc}" )
+    logger.info( f"[7x_Sorter] after import 22 - quote_preserve received: {quote_preserve}" )
 
     # ---- MODE 1: QUOTE PRESERVE (NO STRIP) ----
     if quote_preserve:
-        print( "[7x_Sorter] Preserving original quotes using raw line sort." )
+        logger.info("[7x_Sorter] Preserving original quotes using raw line sort.")
 
-        # Read lines directly to preserve formatting
-        with open( input_file, mode="r", encoding=f_enc, newline="" ) as f:
+        if not isinstance(df_or_path, str):
+            logger.error("[7x_Sorter] ERROR: Expected file path in quote_preserve mode, got DataFrame instead.")
+            return None
+        else:
+            logger.info(f"[7x_Sorter] Received input file path: {df_or_path}")
+
+        # Open file safely with fallback encoding
+        _, f_enc, _ = safe_open(df_or_path, mode="r", flexible=True)
+
+        with open(df_or_path, mode="r", encoding=f_enc, newline="") as f:
             header_line = f.readline()
-            header_fields = header_line.strip().split( delimiter )
+            header_fields = header_line.strip().split(delimiter)
             data_lines = f.readlines()
             reject_lines = []
 
@@ -41,44 +56,85 @@ def sort_records(input_file, output_file, sort_fields, delimiter=",", quote_pres
         sort_indices = []
         for field in sort_fields:
             if field not in header_fields:
-                raise ValueError( f"[7x_Sorter] Field not found in header: {field}" )
-            sort_indices.append( header_fields.index( field ) )
+                raise ValueError(f"[7x_Sorter] Field not found in header: {field}")
+            sort_indices.append(header_fields.index(field))
 
-        print( "\n=== SORT ORDER CONFIRMATION ===" )
-        for i, field in enumerate( sort_fields, 1 ):
-            print( f"[{i}] {field}" )
-        print( "===============================\n" )
+        msg = "\n=== SORT ORDER CONFIRMATION ==="
+        print(msg)
+        logger.info(msg)
+
+        for i, field in enumerate(sort_fields, 1):
+            msg = f"[{i}] {field}"
+            print(msg)
+            logger.info(msg)
+
+        logger.info("===============================\n")
 
         def extract_sort_keys(line):
+            if not line.strip():
+                return tuple()  # Skip blank lines
             try:
                 reader = csv.reader(StringIO(line), delimiter=delimiter, quotechar='"')
-                fields = next(reader)
+                fields = next(reader, None)
+                # logger.debug(f"[QUOTE-PRESERVE] Parsed fields: {fields}")
+                if not fields or all(not str(f).strip() for f in fields):
+                    # logger.debug("[QUOTE-PRESERVE] Skipping parsed empty or whitespace-only row.")
+                    return tuple()
+
             except Exception as e:
-                print(f"[WARN] Failed to parse line for sorting: {line.strip()[:80]}... Error: {e}")
+                logger.warning(f"[WARN] Failed to parse line: {line.strip()[:80]} -- {e}")
                 reject_lines.append(line)
-                return tuple()  # Still include in sort at top (optional)
+                return tuple()
 
             keys = []
             for i in sort_indices:
+                if i >= len(fields):
+                    logger.error(f"[ERROR] Sort field index {i} out of range for line: {line.strip()[:100]}")
+                    reject_lines.append(line)
+                    return tuple()
                 val = fields[i].strip().strip('"')
                 try:
-                    keys.append(int(val))  # Try integer
+                    keys.append(int(val))
                 except ValueError:
                     try:
-                        keys.append(float(val))  # Try float
+                        keys.append(float(val))
                     except ValueError:
-                        keys.append(val)  # Fall back to cleaned string
+                        keys.append(val)
             return tuple(keys)
 
-        # Perform the sort
+        # Perform sort
         sorted_lines = sorted(data_lines, key=extract_sort_keys)
 
-        # Write main output
+        # Write output safely with cleaned newlines
         with open(output_file, mode="w", encoding="utf-8", newline="") as f:
-            f.write(header_line)
-            f.writelines(sorted_lines)
+            writer = csv.writer(f, delimiter=delimiter, quoting=csv.QUOTE_MINIMAL)
 
-        print(f"[7x_Sorter] Output written to: {output_file}")
+            # Write header
+            writer.writerow(header_fields)
+
+            # Write each row
+            for line in sorted_lines:
+                if not line.strip():
+                    # logger.debug("[QUOTE-PRESERVE] Skipping raw blank line.")
+                    continue  # skip blanks
+
+                reader = csv.reader(StringIO(line), delimiter=delimiter, quotechar='"')
+                try:
+                    row = next(reader)
+                    cleaned_row = [col.strip().strip("\r\n") for col in row]
+
+                    # NEW: Skip fully empty or whitespace-only rows
+                    if not any(cell.strip() for cell in cleaned_row):
+                        logger.debug("[QUOTE-PRESERVE] Skipping cleaned empty row")
+                        continue
+
+                    # logger.debug(f"[QUOTE-PRESERVE] Writing cleaned row: {cleaned_row}")
+                    writer.writerow(cleaned_row)
+
+                except Exception as e:
+                    logger.warning(f"[SKIP] Malformed line: {line.strip()[:80]} -- {e}")
+
+        logger.info(f"[7x_Sorter] Output written to: {output_file}")
 
         # Optionally write rejected lines
         if reject_lines:
@@ -87,27 +143,44 @@ def sort_records(input_file, output_file, sort_fields, delimiter=",", quote_pres
                 rej.writelines(reject_lines)
             print(f"[WARN] {len(reject_lines)} malformed line(s) written to: {reject_path}")
 
-        return
-
+        print(f"[DEBUG] Returning sorted output file: {output_file}")
+        return output_file
 
     # ---- MODE 2: STRIP QUOTES USING DASK ----
-    print( "[7x_Sorter] - quote_preserve received: False" )
+    # logger.info("[7x_Sorter] - quote_preserve received: False")
+
+    reject_lines = []  # Ensure reject_lines is always defined
 
     # Load with Dask for parallel sort; dtype=str to ensure consistent column handling
-    df = dd.read_csv(
-        input_file,
-        sep=delimiter,
-        encoding=f_enc,
-        assume_missing=True,
-        dtype=str
-    )
+    if isinstance(df_or_path, dd.DataFrame):
+        df = df_or_path
+        logger.info("[7x_Sorter] Using provided Dask DataFrame (normalized or preloaded).")
+        f_enc = "utf-8"  # Assume default if already loaded
+    else:
+        _, f_enc, _ = safe_open(df_or_path, mode="r", flexible=fallback)
+        logger.info(f"[7x_Sorter] Detected encoding: {f_enc}")
+        df = dd.read_csv(
+            df_or_path,
+            sep=delimiter,
+            encoding=f_enc,
+            assume_missing=True,
+            dtype=str
+        )
 
-    print( "\n=== SORT ORDER CONFIRMATION ===" )
-    for i, field in enumerate( sort_fields, 1 ):
-        print( f"[{i}] {field}" )
-    print( "===============================\n" )
+    msg = "\n=== SORT ORDER CONFIRMATION ==="
+    print(msg)
+    logger.info(msg)
 
-    sorted_df = df.sort_values( by=sort_fields )
+    for i, field in enumerate(sort_fields, 1):
+        msg = f"[{i}] {field}"
+        print(msg)
+        logger.info(msg)
+
+    msg = "===============================\n"
+    print(msg)
+    logger.info(msg)
+
+    sorted_df = df.sort_values(by=sort_fields)
 
     # Save with quotes stripped (QUOTE_NONE), and escapechar to avoid crash on quote-containing values
     sorted_df.to_csv(
@@ -120,7 +193,19 @@ def sort_records(input_file, output_file, sort_fields, delimiter=",", quote_pres
         escapechar='\\'  # <-- REQUIRED for QUOTE_NONE
     )
 
-    print( f"[7x_Sorter] Output written to: {output_file}" )
+    logger.info(f"[7x_Sorter] Output written to: {output_file}")
+    import os
+    print(f"[DEBUG] Checking if output file was created: {output_file}")
+    print(f"[DEBUG] os.path.exists: {os.path.exists(output_file)}")
 
-    return None
+    # Optionally write rejected lines
+    if reject_lines:
+        reject_path = output_file.replace("._RESULTS", "._REJECTS")
+        with open(reject_path, mode="w", encoding="utf-8", newline="") as rej:
+            rej.writelines(reject_lines)
+        print(f"[WARN] {len(reject_lines)} malformed line(s) written to: {reject_path}")
+
+    return output_file
+
+
 

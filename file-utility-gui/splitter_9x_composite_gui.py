@@ -7,12 +7,19 @@ from tkinter import simpledialog, messagebox
 import pandas as pd
 import dask.dataframe as dd
 import csv
-
+from utils_11x_gui import safe_open
 
 def split_by_composite_condition(shared_data):
     delimiter = shared_data["delimiter"]
     input_file = shared_data["input_file"]
     header = shared_data["header"]
+    # Setup logger (from shared_data or fallback)
+    logger = shared_data.get("logger")
+    if logger is None:
+        import logging
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger("splitter_fallback_composite")
+
 
     # Prompt user to select multiple fields
     fields = gui_select_multiple_fields("Select fields for composite split", header)
@@ -29,15 +36,30 @@ def split_by_composite_condition(shared_data):
             return
         match_values[field] = val.strip().lower()
 
-    # Load data
-    df = dd.read_csv(
-        input_file,
-        encoding="utf-8-sig",
-        assume_missing=True,
-        dtype=str,
-        sep=delimiter,
-        blocksize="64MB"
-    )
+    # Load the full Dask DataFrame
+    df = shared_data.get("normalized_ddf")
+    if df is not None:
+        logger.info("[9x_Splitter_Composite] Using normalized Dask dataframe.")
+    else:
+        logger.info("[9x_Splitter_Composite] No normalized dataframe found — loading from file.")
+        df = shared_data.get("normalized_ddf")
+        if df is not None:
+            logger.info("[9x_Splitter_Composite] Using normalized Dask dataframe.")
+        else:
+            logger.info("[9x_Splitter_Composite] No normalized dataframe found — loading from file.")
+            _, detected_enc, _ = safe_open(
+                input_file,
+                mode="r",
+                flexible=shared_data["flags"].get("flexible_decoding", True)
+            )
+            df = dd.read_csv(
+                input_file,
+                assume_missing=True,
+                encoding=detected_enc,
+                dtype=str,
+                sep=delimiter,
+                blocksize="64MB"
+            )
 
     # Normalize and filter for match
     for field, match in match_values.items():
@@ -46,14 +68,29 @@ def split_by_composite_condition(shared_data):
     match_df = df
 
     # Load full data for nonmatch
-    full_df = dd.read_csv(
-        input_file,
-        encoding="utf-8-sig",
-        assume_missing=True,
-        dtype=str,
-        sep=delimiter,
-        blocksize="64MB"
-    )
+    full_df = shared_data.get("normalized_ddf")
+    if full_df is not None:
+        logger.info("[9x_Splitter_Composite] Using normalized Dask dataframe for unmatched records.")
+    else:
+        logger.info("[9x_Splitter_Composite] No normalized dataframe found — loading from file.")
+        full_df = shared_data.get("normalized_ddf")
+        if full_df is not None:
+            logger.info("[9x_Splitter_Composite] Using normalized Dask dataframe for unmatched records.")
+        else:
+            logger.info("[9x_Splitter_Composite] No normalized dataframe found — loading from file.")
+            _, detected_enc, _ = safe_open(
+                input_file,
+                mode="r",
+                flexible=shared_data["flags"].get("flexible_decoding", True)
+            )
+            full_df = dd.read_csv(
+                input_file,
+                encoding=detected_enc,
+                assume_missing=True,
+                dtype=str,
+                sep=delimiter,
+                blocksize="64MB"
+            )
 
     nonmatch_df = full_df
     for field, match in match_values.items():
@@ -102,6 +139,9 @@ def split_by_composite_condition(shared_data):
     print("[9x_Splitter_Composite] Split complete:")
     print(f"  Match → {match_file}")
     print(f"  Non-match → {nonmatch_file}")
+    logger.info("[9x_Splitter_Composite] Split complete:")
+    logger.info(f"  Match → {match_file}")
+    logger.info(f"  Non-match → {nonmatch_file}")
 
 def gui_select_multiple_fields(title, header_list):
     win = tk.Toplevel()

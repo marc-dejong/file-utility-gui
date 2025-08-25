@@ -1,4 +1,10 @@
-# 4x_Replacer.py
+#
+import logging
+logger = logging.getLogger()
+
+# print("[DEBUG] Entered replacer gui")
+# logger.info("[DEBUG] Entered replacer_gui_")
+
 
 def replace_rec_contents(row, header_fields, replacement_config, log_fn=None):
     """
@@ -23,34 +29,45 @@ def replace_rec_contents(row, header_fields, replacement_config, log_fn=None):
 
         current_value = updated_row[col_idx]
 
-        # Optionally strip surrounding quotes
-        if replacement_config.get( "strip_quotes" ):
-            current_value = current_value.strip( '"' ).strip( "'" )
-
-        # Optionally trim whitespace
-        current_value = current_value.strip()
-
+        # Rule-specific quote handling (used only during comparison)
         compare_val = current_value if case_sensitive else current_value.lower()
-
-        print(
-            f"[CHECK] Row value='{current_value}' | Comparing to='{old_value}' | Field='{field_name}' | Case sensitive={case_sensitive}" )
-
         match_target = old_value if case_sensitive else old_value.lower()
 
+        # Always trim extra whitespace
+        current_value = current_value.strip()
+
+        # Only strip quotes if rule requests it
+        compare_val = current_value
+        match_target = old_value
+        if rule.get("strip_quotes"):
+            print(f"[DEBUG] Stripping quotes from compare values in field '{field_name}'")
+            logger.debug(f"[REPLACER] Rule requests strip_quotes=True for field '{field_name}' — applying to compare_val and match_target")
+            compare_val = compare_val.strip('"').strip("'")
+            match_target = match_target.strip('"').strip("'")
+
+        # Apply case sensitivity
+        if not case_sensitive:
+            compare_val = compare_val.lower()
+            match_target = match_target.lower()
+
+        # Apply replacement
         if match_type == "exact" and compare_val == match_target:
             updated_row[col_idx] = new_value
             was_changed = True
             if log_fn:
-                log_fn( f"[REPLACED] Field '{field_name}': '{current_value}' → '{new_value}'" )
+                log_fn(f"[REPLACED] Field '{field_name}': '{current_value}' → '{new_value}'")
 
         elif match_type == "substring" and match_target in compare_val:
-            new_text = (current_value.replace( old_value, new_value )
-                        if case_sensitive else _replace_insensitive( current_value, old_value, new_value ))
+            new_text = (
+                current_value.replace(old_value, new_value)
+                if case_sensitive
+                else _replace_insensitive(current_value, old_value, new_value)
+            )
             if new_text != current_value:
                 updated_row[col_idx] = new_text
                 was_changed = True
                 if log_fn:
-                    log_fn( f"[REPLACED] Field '{field_name}': '{current_value}' → '{new_text}'" )
+                    log_fn(f"[REPLACED] Field '{field_name}': '{current_value}' → '{new_text}'")
 
     return updated_row, was_changed
 
