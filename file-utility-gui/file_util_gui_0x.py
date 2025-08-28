@@ -83,6 +83,7 @@ logger = logging.getLogger()
 
 import os
 import sys
+import subprocess
 import csv
 import importlib.util
 import warnings
@@ -94,10 +95,21 @@ from utils_11x_gui import safe_open
 from quote_detector import detect_field_quote_pattern
 from stub_loader import load_stub_lookup_table_v2
 from filters_ui_3x_gui import collect_filter_rules_gui
-
+from scissors_ui_6x_gui import ScissorsDialog
+from key_merge_ui_12x_gui import KeyMergeDialog
+# --- Option 9 (Split-by-Key) UI ---
+try:
+    from key_split_ui_9x_gui import run_key_split_workflow_gui
+except Exception:
+    run_key_split_workflow_gui = None  # handled gracefully at runtime
+# --- Option 11 (Concatenate) UI ---
+try:
+    from concatenator_ui_11x_gui import ConcatenateFilesDialog
+except Exception:
+    ConcatenateFilesDialog = None  # handled gracefully at runtime
 # --- Dedupe UI + engine ---
-from dedupe_ui_8x import select_dedupe_mode, prompt_dedupe_fields
-import deduper_8x
+from dedupe_ui_8x import prompt_dedupe_mode, prompt_dedupe_fields
+
 
 
 # Optional: Enable Dask if available
@@ -477,10 +489,10 @@ class FileUtilityApp:
             "3": "replace_rec_contents",
             "4": "add_rec_stub_(fixed)",
             "5": "add_rec_stub_(var_from_rec_contents)",
-            "6": "delete_rec_by_condition",
+            "6": "Scissors — Column Chooser",
             "7": "sort_records",
             "8": "dedupe_records",
-            "9": "split_file_by_condition",
+            "9": "split_by_key",
             "10": "split_by_composite_condition",
             "11": "concatenate_files",
             "12": "merge_by_key",
@@ -544,6 +556,77 @@ class FileUtilityApp:
         """
 
         print("[OC] enter on_continue")
+        # --- FAST-PATH: If ONLY "concatenate_files" is selected, launch the dialog now ---
+        try:
+            selected_indices_fp = self.function_listbox.curselection()
+            selected_labels_fp = [self.function_listbox.get(i) for i in selected_indices_fp]
+            selected_functions_fp = [lbl.split(". ", 1)[1] for lbl in selected_labels_fp]
+        except Exception:
+            selected_functions_fp = []
+
+        if selected_functions_fp and all(fn == "concatenate_files" for fn in selected_functions_fp):
+            if ConcatenateFilesDialog is None:
+                messagebox.showerror("Option 11", "Concatenator UI not available (import failed).")
+                return
+            # Seed last_input_dir from the selected input file (if any)
+            if not self.shared_data.get("last_input_dir") and self.shared_data.get("input_file"):
+                self.shared_data["last_input_dir"] = os.path.dirname(self.shared_data["input_file"])
+
+            dlg = ConcatenateFilesDialog(self.root, self.shared_data)
+            _ = dlg.open()  # returns after the dialog closes
+
+            # Show the standard completion popup and exit cleanly (fast path = only Option 11)
+            try:
+                messagebox.showinfo("File Utility Complete", "All selected function(s) completed successfully.",
+                                    parent=self.root)
+            except Exception:
+                pass
+            try:
+                if self.root and self.root.winfo_exists():
+                    self.root.quit()
+            except Exception:
+                pass
+            try:
+                if self.root and self.root.winfo_exists():
+                    self.root.destroy()
+            except Exception:
+                pass
+            return
+
+        # --- FAST-PATH: If ONLY "Scissors — Column Chooser" is selected, launch it now ---
+        try:
+            selected_indices_sc = self.function_listbox.curselection()
+            selected_labels_sc = [self.function_listbox.get(i) for i in selected_indices_sc]
+            selected_functions_sc = [lbl.split(". ", 1)[1] for lbl in selected_labels_sc]
+        except Exception:
+            selected_functions_sc = []
+
+        if selected_functions_sc and all(fn.lower().startswith("scissors") for fn in selected_functions_sc):
+            try:
+                dlg = ScissorsDialog(self.root, self.shared_data)
+                _ = dlg.open()  # modal; handles preview+run, writes report
+            except Exception as e:
+                messagebox.showerror("Option 6", f"Could not launch Scissors UI:\n{e}")
+                return
+
+            # Standard completion popup and clean close (match Option 11 style)
+            try:
+                messagebox.showinfo("File Utility Complete", "All selected function(s) completed successfully.",
+                                    parent=self.root)
+            except Exception:
+                pass
+            try:
+                if self.root and self.root.winfo_exists():
+                    self.root.quit()
+            except Exception:
+                pass
+            try:
+                if self.root and self.root.winfo_exists():
+                    self.root.destroy()
+            except Exception:
+                pass
+            return
+
         # Ensure previous run doesn't suppress popups or reuse old replace config
         self.shared_data.pop("end_popup_shown", None)
         if "function_queue" in self.shared_data and "replace_rec_contents" in self.shared_data["function_queue"]:
@@ -556,9 +639,92 @@ class FileUtilityApp:
         except Exception:
             pass
 
+        # --- FAST-PATH: If ONLY "merge_by_key" is selected, launch it now ---
+        try:
+            sel_idx_mk = self.function_listbox.curselection()
+            sel_labels_mk = [self.function_listbox.get(i) for i in sel_idx_mk]
+            sel_funcs_mk = [lbl.split(". ", 1)[1] for lbl in sel_labels_mk]
+        except Exception:
+            sel_funcs_mk = []
+
+        if sel_funcs_mk and all(fn == "merge_by_key" for fn in sel_funcs_mk):
+            try:
+                dlg = KeyMergeDialog(self.root, self.shared_data)
+                _ = dlg.open()
+            except Exception as e:
+                messagebox.showerror("Option 12", f"Could not launch Merge-by-Key UI:\n{e}")
+                return
+            try:
+                messagebox.showinfo("File Utility Complete",
+                                    "All selected function(s) completed successfully.", parent=self.root)
+            except Exception:
+                pass
+            try:
+                if self.root and self.root.winfo_exists(): self.root.quit()
+            except Exception:
+                pass
+            try:
+                if self.root and self.root.winfo_exists(): self.root.destroy()
+            except Exception:
+                pass
+            return
+
+        # --- FAST-PATH: If ONLY "split_by_key" is selected, launch it now ---
+        try:
+            sel_idx_k9 = self.function_listbox.curselection()
+            sel_labels_k9 = [self.function_listbox.get(i) for i in sel_idx_k9]
+            sel_funcs_k9 = [lbl.split(". ", 1)[1] for lbl in sel_labels_k9]
+        except Exception:
+            sel_funcs_k9 = []
+
+        if sel_funcs_k9 and all(fn == "split_by_key" for fn in sel_funcs_k9):
+            if run_key_split_workflow_gui is None:
+                messagebox.showerror("Option 9", "Key Split UI not available (import failed).")
+                return
+            try:
+                _ = run_key_split_workflow_gui(self.shared_data, logger)
+            except Exception as e:
+                messagebox.showerror("Option 9", f"Could not launch Split-by-Key UI:\n{e}")
+                return
+            try:
+                messagebox.showinfo("File Utility Complete",
+                                    "All selected function(s) completed successfully.", parent=self.root)
+            except Exception:
+                pass
+            try:
+                if self.root and self.root.winfo_exists(): self.root.quit()
+            except Exception:
+                pass
+            try:
+                if self.root and self.root.winfo_exists(): self.root.destroy()
+            except Exception:
+                pass
+            return
+
+        # --- FAST-PATH: If ONLY "file_compare" is selected, launch the stand-alone GUI now ---
+        try:
+            selected_indices_fc = self.function_listbox.curselection()
+            selected_labels_fc = [self.function_listbox.get(i) for i in selected_indices_fc]
+            selected_functions_fc = [lbl.split(". ", 1)[1] for lbl in selected_labels_fc]
+        except Exception:
+            selected_functions_fc = []
+
+        if selected_functions_fc and all(fn == "file_compare" for fn in selected_functions_fc):
+            try:
+                script = os.path.join(os.path.dirname(__file__), "Two_File_Compare_gui.py")
+                # Launch as separate process to avoid multiple Tk roots in one process
+                subprocess.Popen([sys.executable, script])
+            except Exception as e:
+                messagebox.showerror("Option 13", f"Could not launch File Compare UI:\n{e}")
+            return  # nothing else to do in 0x for this path
+
         try:
             # --- 1) Detect delimiter for main input (use preloaded file_loader) ---
-            if not self.shared_data.get("input_file"):
+            # Allow continue if concatenate or file_compare is selected (both are stand-alone)
+            pending_labels = [self.function_listbox.get(i) for i in self.function_listbox.curselection()]
+            pending_functions = [lbl.split(". ", 1)[1] for lbl in pending_labels]
+            if not self.shared_data.get("input_file") and not (
+                    {"concatenate_files", "file_compare"} & set(pending_functions)):
                 messagebox.showerror("Missing Input", "Please select an input file before continuing.")
                 return
 
@@ -786,7 +952,6 @@ class FileUtilityApp:
         if "dedupe_records" in self.shared_data.get("function_queue", []):
             # Only prompt once; cache for backend
             if not self.shared_data.get("dedupe_mode"):
-                from dedupe_ui_8x import prompt_dedupe_mode
                 mode = prompt_dedupe_mode()  # UI prompt ONCE
                 if mode is None:
                     messagebox.showinfo(title="Canceled", message="Dedupe canceled by user.")
@@ -795,7 +960,6 @@ class FileUtilityApp:
 
             # Always use the CURRENT file’s header for the field picker
             header_for_picker = self.shared_data.get("header") or self.shared_data.get("output_header") or []
-            from dedupe_ui_8x import prompt_dedupe_fields
             fields = prompt_dedupe_fields(header_for_picker)
             if not fields:
                 messagebox.showinfo(title="Canceled", message="No columns selected for dedupe.")
@@ -805,6 +969,73 @@ class FileUtilityApp:
             self.shared_data["dedupe_fields"] = fields
 
         # --- 6) Route execution ---
+        # If file_compare was selected with other functions, launch it here first.
+        if "file_compare" in self.shared_data.get("function_queue", []):
+            try:
+                script = os.path.join(os.path.dirname(__file__), "Two_File_Compare_gui.py")
+                subprocess.Popen([sys.executable, script])
+            except Exception as e:
+                messagebox.showerror("Option 13", f"Could not launch File Compare UI:\n{e}")
+                # Do not return; we still remove it from queue and proceed with others
+            # Remove it from the queue so the stream/router path doesn't see it
+            self.shared_data["function_queue"] = [
+                fn for fn in self.shared_data["function_queue"] if fn != "file_compare"
+            ]
+
+        # If concatenation was selected along with other functions, run it here first.
+        if "concatenate_files" in self.shared_data.get("function_queue", []):
+            if ConcatenateFilesDialog is None:
+                messagebox.showerror("Option 11", "Concatenator UI not available (import failed).")
+                return
+            if not self.shared_data.get("last_input_dir") and self.shared_data.get("input_file"):
+                self.shared_data["last_input_dir"] = os.path.dirname(self.shared_data["input_file"])
+            dlg = ConcatenateFilesDialog(self.root, self.shared_data)
+            _ = dlg.open()  # dialog handles preview + run, updates shared_data
+            # Remove it from the queue so function_router doesn't see it
+            self.shared_data["function_queue"] = [
+                fn for fn in self.shared_data["function_queue"] if fn != "concatenate_files"
+            ]
+
+        # If Scissors was selected along with other functions, run it here first.
+        if any(fn.lower().startswith("scissors") for fn in self.shared_data.get("function_queue", [])):
+            try:
+                dlg = ScissorsDialog(self.root, self.shared_data)
+                _ = dlg.open()  # dialog handles preview + run
+            except Exception as e:
+                messagebox.showerror("Option 6", f"Could not launch Scissors UI:\n{e}")
+                return
+            # Remove Scissors from the queue so the stream/router path doesn't see it
+            self.shared_data["function_queue"] = [
+                fn for fn in self.shared_data["function_queue"] if not fn.lower().startswith("scissors")
+            ]
+
+        # If merge_by_key was selected along with others, run it here first.
+        if any(fn == "merge_by_key" for fn in self.shared_data.get("function_queue", [])):
+            try:
+                dlg = KeyMergeDialog(self.root, self.shared_data)
+                _ = dlg.open()
+            except Exception as e:
+                messagebox.showerror("Option 12", f"Could not launch Merge-by-Key UI:\n{e}")
+                return
+            self.shared_data["function_queue"] = [
+                fn for fn in self.shared_data["function_queue"] if fn != "merge_by_key"
+            ]
+
+        # If split_by_key was selected along with others, run it here first.
+        if any(fn == "split_by_key" for fn in self.shared_data.get("function_queue", [])):
+            if run_key_split_workflow_gui is None:
+                messagebox.showerror("Option 9", "Key Split UI not available (import failed).")
+                return
+            try:
+                _ = run_key_split_workflow_gui(self.shared_data, logger)
+            except Exception as e:
+                messagebox.showerror("Option 9", f"Could not launch Split-by-Key UI:\n{e}")
+                return
+            # Remove it so function_router won't see it
+            self.shared_data["function_queue"] = [
+                fn for fn in self.shared_data["function_queue"] if fn != "split_by_key"
+            ]
+
         def _safe_message(kind: str, title: str, body: str):
             import tkinter as tk
             from tkinter import messagebox
@@ -847,11 +1078,7 @@ class FileUtilityApp:
         try:
             # --- Unsupported functions gate (show info + skip) ---
             unsupported = {
-                "delete_rec_by_condition",
-                "split_file_by_condition",
-                "split_by_composite_condition",
-                "concatenate_files",
-                "merge_by_key"
+                "split_by_composite_condition"
                 # add more here as needed
             }
             pending = [fn for fn in self.shared_data.get("function_queue", []) if fn in unsupported]

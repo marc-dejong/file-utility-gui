@@ -4,7 +4,6 @@ def handle_stream_mode(shared_data, record_stream):
     import csv
     from tkinter import messagebox, filedialog
     import logging
-    # normalizer.py
     from normalizer_core import normalize_streaming_record
 
     # Ensure errors list exists and use a named logger for clarity
