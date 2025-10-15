@@ -1,123 +1,132 @@
+# Multi-Function File Utility — GUI Version
 
-# Multi-Function File Utility – GUI Version
-
-**Version:** 1.0  
-**Last Updated:** June 14, 2025  
+**Version:** 2.0  
+**Release:** 2025-08-28-a  
+**Last Updated:** August 28, 2025  
 **Author:** Marc DeJong  
-**Environment:** Python 3.12+, Tkinter, Dask, Pandas
+**Environment:** Python 3.12+, Tkinter; pandas & dask (for selected features)
 
 ---
 
 ## 📌 Overview
 
-This is a modular, GUI-based system for advanced CSV/TXT file processing. The tool supports both low-memory stream-based and full-file Dask processing modes. No coding is required — all functions are accessible via point-and-click GUI prompts.
+A modular, GUI-based toolkit for working with structured CSV/TXT files. It supports both **low-memory streaming operations** and **full-file (Dask)** operations, selectable per function.  
+All features are accessible through the graphical interface — no coding required.
+
+The main entry point is:
+```bash
+python file_util_gui_0x.py
+```
 
 ---
 
-## ✅ Supported Functions
+## ✅ Supported GUI Functions
 
-| Menu # | Function                              | Description |
-|--------|----------------------------------------|-------------|
-| 1      | `filter_omit`                          | Remove records matching filter rules |
-| 2      | `filter_select`                        | Keep records matching filter rules |
-| 3      | `replace_rec_contents`                 | Replace values in selected fields |
-| 4      | `add_rec_stub_(fixed)`                 | Add new column with fixed value |
-| 5      | `add_rec_stub_(var_from_rec_contents)` | Add column based on existing fields |
-| 6      | `delete_rec_by_condition`              | Remove records by rule |
-| 7      | `sort_records`                         | Sort records by one or more fields |
-| 8      | `dedupe_records`                       | Remove or extract duplicates |
-| 9      | `split_file_by_condition`              | Split file based on one field match |
-| 10     | `split_by_composite_condition`         | Split file based on multiple field matches |
-| 11     | `concatenate_files`                    | Combine two or more files |
-| 12     | `merge_by_key`                         | Retain/exclude records based on key file |
-| 13     | `compare_two_files_gui`                | Standalone GUI to compare two delimited files |
-
+| #  | Function Name | Description |
+|----|----------------|-------------|
+| 1  | `filter_omit` | Remove records matching rules |
+| 2  | `filter_select` | Keep records matching rules |
+| 3  | `replace_rec_contents` | Replace values via rules |
+| 4  | `add_rec_stub_(fixed)` | Add a column with a fixed value |
+| 5  | `add_rec_stub_(var_from_rec_contents)` | Add a column derived from other fields |
+| 6  | `Scissors — Column Chooser` | Pick/arrange columns; writes report |
+| 7  | `sort_records` | Sort by one or more fields |
+| 8  | `dedupe_records` | Remove or extract duplicates |
+| 9  | `split_by_key (Match / No Match)` | NEW: Split MAIN by presence in KEY |
+| 10 | `split_by_composite_condition` | Split by multiple field conditions |
+| 11 | `concatenate_files` | Combine files vertically (fast-path) |
+| 12 | `merge_by_key` | Merge/Roll-in by key (fast-path) |
+| 13 | `compare_two_files_gui` | Compare two files; write compare report |
 
 ---
 
-## 📂 File Structure
+## 🆕 What's New in Release 2025-08-28-a
 
-```
-file-utility-gui/
-├── 0x_File_Util_Caller_gui.py        # Main controller
-├── 2x_File_Loader_gui.py             # File reader/writer logic
-├── filters_3x_gui.py, filters_ui_3x_gui.py
-├── 4x_Replacer_gui.py, 4x_Replacer_UI_gui.py
-├── 5x_Add_Stub_gui.py, 5x_Add_Stub_UI_gui.py
-├── 6x_Deleter.py
-├── 7x_Sorter.py
-├── 8x_Deduper.py
-├── 9x_Splitter.py, splitter_9x_gui.py, splitter_9x_composite_gui.py
-├── 10x_Merger.py, merger_gui_10x.py
-├── 11x_Utils.py
-|── Two_File_Compare_gui.py
-├── requirements.txt
-└── File_Utility_GUI_ReadMe.docx
-```
+### Option 9 — Split by Key (Match / No Match)
+**Modules:** `key_split_9x.py`, `key_split_ui_9x_gui.py`
 
-## 🆕 Standalone Utility: File Compare (GUI)
+- Builds a key set from a **KEY file**, then streams the **MAIN file** once.
+- Writes each row to **MATCHED** or **NONMATCHED** outputs.  
+- Normalization options: case-insensitive, whitespace-strip, auto zero-pad widths from KEY.  
+- Encoding probe with UTF-8 fallback to cp1252.  
+- Outputs:  
+  - `<main>_MATCHED.csv`  
+  - `<main>_NONMATCHED.csv`  
+  - `<main>_SPLIT_COUNTS.txt` (summary report)
 
-This standalone script allows comparison of two delimited files, showing unmatched records with detailed character-level differences.
+**Performance Notes:**  
+- MAIN is streamed in a single pass; memory use scales with KEY size.  
+- Ideal for very large MAIN with smaller KEY.
 
-- Supports files with or without headers
-- Allows specific columns to be excluded from comparison
-- GUI-based selection of files and fields
-- Generates `COMPARE_RESULTS.txt` in the same folder
+---
 
+## 🧩 Routing & UX Updates
+
+- Fast-path auto-launch for functions #11 and #12.  
+- Option 9 fully integrated into controller.  
+- Improved label rendering and delimiter auto-detection.  
+- Window centering and UI clamping for consistent display.  
 
 ---
 
 ## 💻 How to Run
 
-1. Clone or download the repo  
-2. Run the main script:
-
-```
-python 0x_File_Util_Caller_gui.py
+Ensure all scripts are in the same folder, then launch the main GUI:
+```bash
+python file_util_gui_0x.py
 ```
 
-3. Use the GUI to:
-   - Load file
-   - Select functions
-   - Configure options
-   - Run and save results
+### Quick Start (Option 9 Example)
+1. Select **Main file** and **Key file**.  
+2. Click **Preview headers**.  
+3. Select matching fields on each side and **Add Pair**.  
+4. (Optional) Override output filenames.  
+5. Click **Run Now** to process.  
+
+A summary dialog appears; totals are also saved to the `_SPLIT_COUNTS.txt` file.
+
+---
+
+## 📂 Folder & Module Structure
+
+| File | Purpose |
+|------|----------|
+| `file_util_gui_0x.py` | Main controller (routing + fast-paths) |
+| `key_split_9x.py` | Engine for Option 9 (streamed split by key) |
+| `key_split_ui_9x_gui.py` | GUI for Option 9 (mapping, options, run) |
+| `merger_gui_10x.py` | Merge GUI / engine |
+| `concatenate_ui_11x_gui.py` | Concatenate GUI |
+| `Two_File_Compare_gui.py` | Standalone Compare GUI |
 
 ---
 
 ## ⚙ Requirements
 
-```
-pandas>=1.5.0
-dask[complete]>=2023.0.0
+```bash
+pip install pandas dask
 ```
 
-Install via:
-
-```
-pip install -r requirements.txt
-```
+Python 3.12+ with Tkinter (bundled).
 
 ---
 
-## 🚧 Future Enhancements
+## ⚠ Known Limits & Tips
 
-- Config save/load
-- Dry-run preview
-- Log file summary
-- Output directory selector
-- Fuzzy merge field mapping
+- If header preview shows a single long cell, re-run with **Auto-detect Delimiter**.  
+- Memory scales with unique KEY combinations — keep key columns minimal.  
+- Ensure “Has header” is set correctly for both files to avoid misalignment.  
 
 ---
 
 ## 📜 License
 
-This project is licensed under the MIT License.
+Licensed under the MIT License.  
 
 ---
 
-### 🔄 Recent Updates
+## 📅 Release History
 
-**2025-06-17**  
-- Added new standalone compare utility: `Two_File_Compare_gui.py`
-- Updated GUI documentation and menu table with function #13
-
+| Release | Summary |
+|----------|----------|
+| **2025-08-28-a** | New Option 9 (Split by Key); 0x integration & UI fixes |
+| **2025-06-14** | Initial GUI ReadMe, functions 1–13 |
