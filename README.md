@@ -1,3 +1,5 @@
+[![Documentation Status](https://readthedocs.org/projects/file-utility-gui/badge/?version=latest)](https://file-utility-gui.readthedocs.io/en/latest/)
+
 # Multi-Function File Utility — GUI Version
 
 **Version:** 2.0  
