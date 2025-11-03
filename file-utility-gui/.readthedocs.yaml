@@ -8,9 +8,18 @@ build:
   tools:
     python: "3.12"
 
+# Tell Read the Docs to use Sphinx to build HTML docs
 sphinx:
-  configuration: docs/conf.py
+  configuration: docs/conf.py   # relative to repository root
+  fail_on_warning: false        # optional, but avoids build stops on warnings
 
+# Optional: build additional formats (PDF, ePub)
+formats:
+  - htmlzip
+  - pdf
+  - epub
+
+# Install Python dependencies required to build docs
 python:
   install:
     - requirements: docs/requirements.txt
