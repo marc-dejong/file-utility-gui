@@ -2,6 +2,7 @@
 project = 'File Utility GUI'
 author = 'Marc de Jong'
 release = '2025-08-28-a'
+version = release  # or set a short form like "2.0"
 copyright = '2025, Marc de Jong'
 
 # -- Path setup --------------------------------------------------------------
