@@ -1,11 +1,11 @@
 ﻿# File Utility GUI
 
-```{mdinclude} ../README.md
+```{include} ../../README.md
+:relative-docs: .
+:relative-images:
 ```
 
 ```{toctree}
 :maxdepth: 2
 :caption: Contents:
-
-modules
 ```
