@@ -29,3 +29,13 @@ autodoc_mock_imports = ['normalizer_12x', 'tkinter', 'pandas', 'dask']
 # -- HTML --------------------------------------------------------------------
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
+
+# -- Footer / Theme options -----------------------------------------------
+html_theme_options = {
+    # Show version and release info in the footer
+    "display_version": True,
+}
+
+# Use your defined 'release' string from above (already set to 2025-08-28-a)
+html_show_sphinx = False   # (optional: hides "Built with Sphinx" text)
+
