@@ -6,8 +6,8 @@ build:
     python: "3.12"
 
 sphinx:
-  configuration: docs/conf.py
+  configuration: file-utility-gui/docs/conf.py
 
 python:
   install:
-    - requirements: docs/requirements.txt
+    - requirements: file-utility-gui/docs/requirements.txt
