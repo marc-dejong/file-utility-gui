@@ -107,32 +107,12 @@ def sort_records(df_or_path, output_file, sort_fields, delimiter=",", quote_pres
 
         # Write output safely with cleaned newlines
         with open(output_file, mode="w", encoding="utf-8", newline="") as f:
-            writer = csv.writer(f, delimiter=delimiter, quoting=csv.QUOTE_MINIMAL)
+            # Write header EXACTLY as in the input
+            f.write(header_line if header_line.endswith("\n") else header_line + "\n")
 
-            # Write header
-            writer.writerow(header_fields)
-
-            # Write each row
+            # Write each row EXACTLY as in the input (preserve quoting and delimiters)
             for line in sorted_lines:
-                if not line.strip():
-                    # logger.debug("[QUOTE-PRESERVE] Skipping raw blank line.")
-                    continue  # skip blanks
-
-                reader = csv.reader(StringIO(line), delimiter=delimiter, quotechar='"')
-                try:
-                    row = next(reader)
-                    cleaned_row = [col.strip().strip("\r\n") for col in row]
-
-                    # NEW: Skip fully empty or whitespace-only rows
-                    if not any(cell.strip() for cell in cleaned_row):
-                        logger.debug("[QUOTE-PRESERVE] Skipping cleaned empty row")
-                        continue
-
-                    # logger.debug(f"[QUOTE-PRESERVE] Writing cleaned row: {cleaned_row}")
-                    writer.writerow(cleaned_row)
-
-                except Exception as e:
-                    logger.warning(f"[SKIP] Malformed line: {line.strip()[:80]} -- {e}")
+                f.write(line if line.endswith("\n") else line + "\n")
 
         logger.info(f"[7x_Sorter] Output written to: {output_file}")
 
